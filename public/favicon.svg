@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <rect width="64" height="64" rx="16" fill="url(#bgGrad)" />
+  <defs>
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0F172A" />
+      <stop offset="1" stop-color="#1E293B" />
+    </linearGradient>
+    <linearGradient id="boxGrad" x1="16" y1="20" x2="48" y2="50" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2563EB" />
+      <stop offset="1" stop-color="#1D4ED8" />
+    </linearGradient>
+  </defs>
+
+  <!-- Isometric Box representing Inventory Lot -->
+  <path d="M32 14L48 22V38L32 46L16 38V22L32 14Z" fill="url(#boxGrad)" />
+  <path d="M32 14L48 22L32 30L16 22L32 14Z" fill="#60A5FA" opacity="0.85" />
+  <path d="M32 30V46L16 38V22L32 30Z" fill="#1E40AF" opacity="0.9" />
+  
+  <!-- FEFO Fast-Forward Arrow / Checkmark -->
+  <path d="M26 32L30 36L38 26" stroke="#10B981" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+
+  <!-- Expiry Timer Clock (Top Right Badge) -->
+  <circle cx="45" cy="19" r="9.5" fill="#0F172A" stroke="#F59E0B" stroke-width="2.5" />
+  <path d="M45 14.5V19L48 21" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>

@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Smart FEFO",
+  "description": "Micro SaaS para Atendimento de Reservas Logísticas na Ambev com metodologia FEFO (First Expire, First Out) e integração SAP.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

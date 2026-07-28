@@ -11,7 +11,7 @@ import {
   Download,
   Loader2,
 } from 'lucide-react';
-import { parseAndImportSapExcel, parseAndImportSapText, loadImportacoes } from '../services/storageService';
+import { parseAndImportSapExcel, parseAndImportSapText, loadImportacoes, loadLotes } from '../services/storageService';
 import { ImportacaoRegistro, SapLoteItem } from '../types';
 import { formatNumberBR } from '../services/fefoEngine';
 
@@ -54,8 +54,7 @@ export const ImportSapView: React.FC<ImportSapViewProps> = ({
         setStatusMessage({ type: 'success', text: res.message });
         setImportHistory(loadImportacoes());
         setPastedText('');
-        const { loadLotes } = await import('../services/storageService');
-        onImportComplete(loadLotes());
+        onImportComplete(res.newLotes || loadLotes());
       } else {
         setStatusMessage({ type: 'error', text: res.message });
       }
@@ -90,8 +89,7 @@ export const ImportSapView: React.FC<ImportSapViewProps> = ({
       if (res.success) {
         setStatusMessage({ type: 'success', text: res.message });
         setImportHistory(loadImportacoes());
-        const { loadLotes } = await import('../services/storageService');
-        onImportComplete(loadLotes());
+        onImportComplete(res.newLotes || loadLotes());
       } else {
         setStatusMessage({ type: 'error', text: res.message });
       }

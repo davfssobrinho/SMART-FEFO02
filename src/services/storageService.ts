@@ -193,7 +193,10 @@ export function loadLotes(): SapLoteItem[] {
     console.error('Failed to load lotes from localStorage', err);
   }
   
-  return [];
+  // Fallback to initial SAP demo dataset if empty or null
+  const initialMock = getInitialMockLotes();
+  saveLotes(initialMock);
+  return initialMock;
 }
 
 // Save Lotes to Storage
@@ -205,6 +208,12 @@ export function saveLotes(lotes: SapLoteItem[]): void {
   } catch (err) {
     console.error('Failed to save lotes to localStorage', err);
   }
+}
+
+export function restoreInitialMockLotes(): SapLoteItem[] {
+  const initialMock = getInitialMockLotes();
+  saveLotes(initialMock);
+  return initialMock;
 }
 
 // Load Atendimentos History
@@ -314,6 +323,13 @@ export function getLastUpdateFormatted(): string {
   return date.toLocaleDateString('pt-BR') + ' às ' + date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
+export interface ImportResult {
+  success: boolean;
+  message: string;
+  newLotesCount: number;
+  newLotes?: SapLoteItem[];
+}
+
 /**
  * Excel SAP File Reader
  * Parses XLSX / XLS files, extracts rows, matches SAP column headers, filters zero-stock, and updates dataset.
@@ -321,7 +337,7 @@ export function getLastUpdateFormatted(): string {
 export async function parseAndImportSapExcel(
   file: File,
   usuarioName: string
-): Promise<{ success: boolean; message: string; newLotesCount: number }> {
+): Promise<ImportResult> {
   return new Promise((resolve) => {
     const reader = new FileReader();
 
@@ -514,6 +530,7 @@ export async function parseAndImportSapExcel(
           success: true,
           message: `${recalced.length} lotes importados e inteligência FEFO recalculada com sucesso!`,
           newLotesCount: recalced.length,
+          newLotes: recalced,
         });
       } catch (err) {
         console.error('Error parsing Excel', err);
@@ -540,7 +557,7 @@ export async function parseAndImportSapExcel(
 export function parseAndImportSapText(
   pastedText: string,
   usuarioName: string
-): { success: boolean; message: string; newLotesCount: number } {
+): ImportResult {
   if (!pastedText || !pastedText.trim()) {
     return { success: false, message: 'O texto colado está vazio.', newLotesCount: 0 };
   }
@@ -704,6 +721,7 @@ export function parseAndImportSapText(
     success: true,
     message: `${recalced.length} lotes colados e importados com sucesso! Inteligência FEFO recalculada.`,
     newLotesCount: recalced.length,
+    newLotes: recalced,
   };
 }
 

@@ -17,12 +17,13 @@ import { SupabaseSqlModal } from './components/SupabaseSqlModal';
 import { AtendimentoView } from './views/AtendimentoView';
 import { ImportSapView } from './views/ImportSapView';
 import { HistoricoView } from './views/HistoricoView';
-import { ConferentesView } from './views/ConferentesView';
 import { ConfiguracoesView } from './views/ConfiguracoesView';
+import { IndicadoresView } from './views/IndicadoresView';
 
 import {
   loadLotes,
   saveLotes,
+  restoreInitialMockLotes,
   loadHistorico,
   saveHistoricoItem,
   loadImportacoes,
@@ -349,13 +350,28 @@ export default function App() {
                     Nenhum dado fictício está sendo exibido. Cole a tabela do relatório do SAP (MB52 / LX02) para calcular a ordem FEFO das suas reservas.
                   </p>
                 </div>
-                <button
-                  onClick={() => setActiveTab('importacao')}
-                  className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer"
-                >
-                  <UploadCloud className="w-4 h-4" />
-                  <span>Importar SAP (Copia e Cola)</span>
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setActiveTab('importacao')}
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+                  >
+                    <UploadCloud className="w-4 h-4" />
+                    <span>Importar SAP (Copia e Cola)</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      const restored = restoreInitialMockLotes();
+                      handleDatasetUpdate(restored);
+                      setNotification('Base de dados SAP de demonstração carregada com sucesso!');
+                      setTimeout(() => setNotification(null), 3500);
+                    }}
+                    className="bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold px-6 py-2.5 rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer border border-slate-700"
+                  >
+                    <FileSpreadsheet className="w-4 h-4 text-amber-400" />
+                    <span>Carregar Base SAP de Demonstração</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <>
@@ -418,6 +434,8 @@ export default function App() {
         )}
 
         {/* View Tabs */}
+        {activeTab === 'indicadores' && <IndicadoresView lotes={lotes} />}
+
         {activeTab === 'historico' && (
           <HistoricoView
             historicoList={historicoList}
@@ -430,6 +448,17 @@ export default function App() {
           <ImportSapView
             activeUserName={loggedUser ? loggedUser.nome : 'Conferente SAP'}
             onImportComplete={(newLotes) => handleDatasetUpdate(newLotes)}
+          />
+        )}
+
+        {activeTab === 'configuracoes' && (
+          <ConfiguracoesView
+            onResetDemoData={() => {
+              const restored = restoreInitialMockLotes();
+              setLotes(restored);
+              setNotification('Base de dados SAP padrão restaurada!');
+              setTimeout(() => setNotification(null), 3000);
+            }}
           />
         )}
       </main>

@@ -5,21 +5,36 @@ import { recalculateFEFO } from './fefoEngine';
 const URL_KEY = 'smart_fefo_supabase_url';
 const ANON_KEY = 'smart_fefo_supabase_key';
 
+const DEFAULT_SUPABASE_URL = 'https://zibafmbgnsouauwnjors.supabase.co';
+const DEFAULT_SUPABASE_KEY = 'sb_publishable_ept1VeS95X94I4PnYdjfeA_VnFhQ6QI';
+
 let cachedClient: SupabaseClient | null = null;
 let cachedUrl = '';
 let cachedKey = '';
 
+export function normalizeSupabaseUrl(url: string): string {
+  if (!url) return DEFAULT_SUPABASE_URL;
+  let clean = url.trim();
+  // Strip /rest/v1 or /rest/v1/ suffix if present
+  clean = clean.replace(/\/rest\/v1\/?$/i, '');
+  // Strip trailing slashes
+  clean = clean.replace(/\/+$/, '');
+  return clean || DEFAULT_SUPABASE_URL;
+}
+
 export function getSupabaseCredentials(): { url: string; key: string } {
   const envUrl = typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_SUPABASE_URL || '' : '';
   const envKey = typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '' : '';
-  const url = (localStorage.getItem(URL_KEY) || envUrl || '').trim();
-  const key = (localStorage.getItem(ANON_KEY) || envKey || '').trim();
+  const rawUrl = (localStorage.getItem(URL_KEY) || envUrl || DEFAULT_SUPABASE_URL).trim();
+  const rawKey = (localStorage.getItem(ANON_KEY) || envKey || DEFAULT_SUPABASE_KEY).trim();
+  const url = normalizeSupabaseUrl(rawUrl);
+  const key = rawKey || DEFAULT_SUPABASE_KEY;
   return { url, key };
 }
 
 export function saveSupabaseCredentials(url: string, key: string): void {
-  const cleanUrl = url.trim();
-  const cleanKey = key.trim();
+  const cleanUrl = normalizeSupabaseUrl(url);
+  const cleanKey = key.trim() || DEFAULT_SUPABASE_KEY;
   localStorage.setItem(URL_KEY, cleanUrl);
   localStorage.setItem(ANON_KEY, cleanKey);
   cachedClient = null; // reset client
@@ -35,7 +50,11 @@ export function getSupabaseClient(): SupabaseClient | null {
 
   try {
     cachedClient = createClient(url, key, {
-      auth: { persistSession: false },
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
     });
     cachedUrl = url;
     cachedKey = key;
@@ -46,9 +65,120 @@ export function getSupabaseClient(): SupabaseClient | null {
   }
 }
 
+// Supabase Auth Helper Methods
+export async function signInWithSupabaseEmail(email: string, pass: string): Promise<{ success: boolean; user?: ConferenteUser; message?: string }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, message: 'Cliente Supabase não inicializado. Verifique a URL e a Chave API.' };
+  }
+
+  try {
+    const { data, error } = await client.auth.signInWithPassword({
+      email: email.trim(),
+      password: pass.trim(),
+    });
+
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        return { success: false, message: 'Email ou senha incorretos. Verifique se a conta já foi criada ou se o provedor Email está ativo no Supabase.' };
+      }
+      if (error.message.includes('Email not confirmed')) {
+        return { success: false, message: 'Email ainda não confirmado. Verifique a caixa de entrada ou desative "Confirm email" nas configurações do Supabase Auth.' };
+      }
+      return { success: false, message: `Erro no login: ${error.message}` };
+    }
+
+    if (!data.user) {
+      return { success: false, message: 'Usuário não retornado pelo Supabase.' };
+    }
+
+    const sbUser = data.user;
+    const displayName = sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Usuário Supabase';
+
+    const conferenteUser: ConferenteUser = {
+      id: `SB-${sbUser.id.substring(0, 8).toUpperCase()}`,
+      nome: displayName,
+      matricula: sbUser.email || 'SUPA-AUTH',
+      turno: 'Geral / 24h',
+      perfil: 'administrador',
+      status: 'Ativo',
+      areaProducao: 'Gestão de Estoque Supabase',
+    };
+
+    return { success: true, user: conferenteUser };
+  } catch (err: any) {
+    return { success: false, message: `Erro inesperado no Supabase Auth: ${err?.message || 'Falha de conexão'}` };
+  }
+}
+
+export async function signUpWithSupabaseEmail(email: string, pass: string, name?: string): Promise<{ success: boolean; user?: ConferenteUser; message?: string; requireEmailConfirmation?: boolean }> {
+  const client = getSupabaseClient();
+  if (!client) {
+    return { success: false, message: 'Cliente Supabase não inicializado. Verifique a URL e a Chave API.' };
+  }
+
+  try {
+    const cleanEmail = email.trim();
+    const cleanName = name?.trim() || cleanEmail.split('@')[0];
+
+    const { data, error } = await client.auth.signUp({
+      email: cleanEmail,
+      password: pass.trim(),
+      options: {
+        data: {
+          full_name: cleanName,
+        },
+      },
+    });
+
+    if (error) {
+      return { success: false, message: `Erro ao cadastrar: ${error.message}` };
+    }
+
+    if (data.user) {
+      const conferenteUser: ConferenteUser = {
+        id: `SB-${data.user.id.substring(0, 8).toUpperCase()}`,
+        nome: cleanName,
+        matricula: cleanEmail,
+        turno: 'Geral / 24h',
+        perfil: 'administrador',
+        status: 'Ativo',
+        areaProducao: 'Gestão de Estoque Supabase',
+      };
+
+      // Check if session was auto-created or needs email confirmation
+      if (data.session) {
+        return { success: true, user: conferenteUser, message: 'Conta criada e autenticada com sucesso!' };
+      } else {
+        return {
+          success: true,
+          user: conferenteUser,
+          requireEmailConfirmation: true,
+          message: 'Cadastro realizado no Supabase! Se o envio de confirmação de email estiver ativo no Supabase, verifique sua caixa de entrada.',
+        };
+      }
+    }
+
+    return { success: false, message: 'Não foi possível registrar o usuário.' };
+  } catch (err: any) {
+    return { success: false, message: `Erro ao criar conta no Supabase: ${err?.message || 'Falha de conexão'}` };
+  }
+}
+
+export async function signOutSupabase(): Promise<void> {
+  const client = getSupabaseClient();
+  if (client) {
+    try {
+      await client.auth.signOut();
+    } catch (e) {
+      console.warn('Error signing out Supabase:', e);
+    }
+  }
+}
+
 // Test Connection
 export async function testSupabaseConnection(urlInput?: string, keyInput?: string): Promise<{ success: boolean; message: string }> {
-  const url = urlInput?.trim() || getSupabaseCredentials().url;
+  const url = normalizeSupabaseUrl(urlInput?.trim() || getSupabaseCredentials().url);
   const key = keyInput?.trim() || getSupabaseCredentials().key;
 
   if (!url || !key) {

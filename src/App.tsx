@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Navigation, TabType } from './components/Navigation';
 import { DashboardKpiCards } from './components/DashboardKpiCards';
@@ -40,6 +40,7 @@ import {
   updateHistoricoControleStatus,
 } from './services/storageService';
 import { recalculateFEFO } from './services/fefoEngine';
+import { getSupabaseClient, signOutSupabase } from './services/supabaseClient';
 import { SapLoteItem, FilterState, DashboardKpis, AtendimentoHistorico, ImportacaoRegistro, UserRole, ConferenteUser, StatusControle } from './types';
 import { Filter, CheckCircle2, UploadCloud, FileSpreadsheet } from 'lucide-react';
 
@@ -120,7 +121,33 @@ export default function App() {
     setTimeout(() => setNotification(null), 3500);
   };
 
-  const handleLogout = () => {
+  // Restore active Supabase session if available on startup
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    client.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && !loggedUser) {
+        const sbUser = session.user;
+        const displayName = sbUser.user_metadata?.full_name || sbUser.email?.split('@')[0] || 'Usuário Supabase';
+        const conferenteUser: ConferenteUser = {
+          id: `SB-${sbUser.id.substring(0, 8).toUpperCase()}`,
+          nome: displayName,
+          matricula: sbUser.email || 'SUPA-AUTH',
+          turno: 'Geral / 24h',
+          perfil: 'administrador',
+          status: 'Ativo',
+          areaProducao: 'Gestão de Estoque Supabase',
+        };
+        setLoggedUser(conferenteUser);
+        saveLoggedUser(conferenteUser);
+        setIsLoginModalOpen(false);
+      }
+    });
+  }, []);
+
+  const handleLogout = async () => {
+    await signOutSupabase();
     setLoggedUser(null);
     localStorage.removeItem('smart_fefo_logged_user_v2');
     setIsLoginModalOpen(true);

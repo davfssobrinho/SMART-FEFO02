@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   FileSpreadsheet,
   History,
-  Settings,
   BarChart3,
 } from 'lucide-react';
 
@@ -49,12 +48,6 @@ export const Navigation: React.FC<NavigationProps> = ({ activeTab, onTabChange, 
       id: 'importacao',
       label: 'Importar SAP',
       icon: FileSpreadsheet,
-      badge: null,
-    },
-    {
-      id: 'configuracoes',
-      label: 'Configurações',
-      icon: Settings,
       badge: null,
     },
   ];

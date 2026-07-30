@@ -24,8 +24,11 @@ import {
   loadLotes,
   saveLotes,
   restoreInitialMockLotes,
+  clearAllLotesData,
   loadHistorico,
   saveHistoricoItem,
+  deleteHistoricoItem,
+  clearAllHistorico,
   loadImportacoes,
   loadActiveUserRole,
   saveActiveUserRole,
@@ -304,6 +307,20 @@ export default function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
+  const handleDeleteSingleHistorico = (id: string) => {
+    const updated = deleteHistoricoItem(id);
+    setHistoricoList(updated);
+    setNotification('Registro de histórico de reserva removido com sucesso.');
+    setTimeout(() => setNotification(null), 3000);
+  };
+
+  const handleClearAllHistorico = () => {
+    const updated = clearAllHistorico();
+    setHistoricoList(updated);
+    setNotification('Todo o histórico de reservas e atendimentos foi apagado com sucesso.');
+    setTimeout(() => setNotification(null), 3000);
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans flex flex-col antialiased">
       {/* Header */}
@@ -347,7 +364,7 @@ export default function App() {
                     A base de dados está vazia
                   </h3>
                   <p className="text-xs text-slate-500 max-w-md mt-1">
-                    Nenhum dado fictício está sendo exibido. Cole a tabela do relatório do SAP (MB52 / LX02) para calcular a ordem FEFO das suas reservas.
+                    Nenhum dado fictício está sendo exibido. Importe o relatório do SAP (Excel ou Copia e Cola) para calcular a ordem FEFO das suas reservas com dados reais.
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -356,20 +373,7 @@ export default function App() {
                     className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold px-6 py-2.5 rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer"
                   >
                     <UploadCloud className="w-4 h-4" />
-                    <span>Importar SAP (Copia e Cola)</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      const restored = restoreInitialMockLotes();
-                      handleDatasetUpdate(restored);
-                      setNotification('Base de dados SAP de demonstração carregada com sucesso!');
-                      setTimeout(() => setNotification(null), 3500);
-                    }}
-                    className="bg-slate-900 hover:bg-slate-800 text-amber-400 text-xs font-bold px-6 py-2.5 rounded-lg shadow-sm transition-all flex items-center gap-2 cursor-pointer border border-slate-700"
-                  >
-                    <FileSpreadsheet className="w-4 h-4 text-amber-400" />
-                    <span>Carregar Base SAP de Demonstração</span>
+                    <span>Importar Relatório SAP</span>
                   </button>
                 </div>
               </div>
@@ -418,6 +422,18 @@ export default function App() {
                       selectedLoteId={selectedLote?.id || null}
                       onSelectLote={(lote) => setSelectedLoteId(lote.id)}
                       onOpenAtendimentoModal={(lote) => setAtendimentoTargetLote(lote)}
+                      onDeleteLote={(id) => {
+                        const updated = lotes.filter((l) => l.id !== id);
+                        handleDatasetUpdate(updated);
+                        setNotification('Lote removido da base de estoque com sucesso.');
+                        setTimeout(() => setNotification(null), 3000);
+                      }}
+                      onClearAllLotes={() => {
+                        clearAllLotesData();
+                        setLotes([]);
+                        setNotification('Tabela de lotes zerada com sucesso.');
+                        setTimeout(() => setNotification(null), 3000);
+                      }}
                     />
                   </div>
 
@@ -440,6 +456,8 @@ export default function App() {
           <HistoricoView
             historicoList={historicoList}
             onUpdateStatus={handleUpdateControlStatus}
+            onDeleteSingleHistorico={handleDeleteSingleHistorico}
+            onClearAllHistorico={handleClearAllHistorico}
             activeUserName={loggedUser ? `${loggedUser.nome} (${loggedUser.id})` : 'Time de Controle'}
           />
         )}
@@ -453,10 +471,19 @@ export default function App() {
 
         {activeTab === 'configuracoes' && (
           <ConfiguracoesView
+            activeRole={activeRole}
+            onRoleChange={handleRoleChange}
+            onClearLotes={() => {
+              clearAllLotesData();
+              setLotes([]);
+              setNotification('Base de dados limpa com sucesso. Pronta para importação SAP!');
+              setTimeout(() => setNotification(null), 3000);
+            }}
+            onClearHistorico={handleClearAllHistorico}
             onResetDemoData={() => {
               const restored = restoreInitialMockLotes();
               setLotes(restored);
-              setNotification('Base de dados SAP padrão restaurada!');
+              setNotification('Base de dados SAP de demonstração carregada!');
               setTimeout(() => setNotification(null), 3000);
             }}
           />

@@ -10,10 +10,19 @@ import {
   Sparkles,
   Download,
   Loader2,
+  Trash2,
 } from 'lucide-react';
-import { parseAndImportSapExcel, parseAndImportSapText, loadImportacoes, loadLotes } from '../services/storageService';
+import {
+  parseAndImportSapExcel,
+  parseAndImportSapText,
+  loadImportacoes,
+  loadLotes,
+  deleteImportacaoRegistro,
+  clearAllImportacoesHistory,
+} from '../services/storageService';
 import { ImportacaoRegistro, SapLoteItem } from '../types';
 import { formatNumberBR } from '../services/fefoEngine';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 interface ImportSapViewProps {
   onImportComplete: (newLotes: SapLoteItem[]) => void;
@@ -30,6 +39,17 @@ export const ImportSapView: React.FC<ImportSapViewProps> = ({
   const [dragActive, setDragActive] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [importHistory, setImportHistory] = useState<ImportacaoRegistro[]>(loadImportacoes());
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const handleTextPasteSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -126,6 +146,33 @@ export const ImportSapView: React.FC<ImportSapViewProps> = ({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileUpload(e.dataTransfer.files[0]);
     }
+  };
+
+  const handleDeleteSingleHistory = (id: string, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setConfirmModal({
+      isOpen: true,
+      title: 'Remover Registro de Carga',
+      message: 'Deseja realmente apagar este registro de carga do histórico?',
+      onConfirm: () => {
+        const updated = deleteImportacaoRegistro(id);
+        setImportHistory(updated);
+        setStatusMessage({ type: 'success', text: 'Registro de carga removido do histórico com sucesso.' });
+      },
+    });
+  };
+
+  const handleClearAllHistory = () => {
+    setConfirmModal({
+      isOpen: true,
+      title: 'Limpar Todo o Histórico de Cargas',
+      message: 'Tem certeza de que deseja apagar TODO o histórico de cargas e arquivos importados do SAP? Esta ação não pode ser desfeita.',
+      onConfirm: () => {
+        const updated = clearAllImportacoesHistory();
+        setImportHistory(updated);
+        setStatusMessage({ type: 'success', text: 'Todo o histórico de cargas de arquivo foi apagado.' });
+      },
+    });
   };
 
   return (
@@ -356,27 +403,37 @@ Nº Material	Desc. Material	Nº Lote	Depósito	Data Vencimento	Estoque Utiliz. L
 
       {/* History of Import Operations */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
           <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
             <FileCheck className="w-4 h-4 text-emerald-600" />
             Histórico de Arquivos e Cargas Importadas
           </h3>
           {importHistory.length > 0 && (
-            <button
-              onClick={() => {
-                const blob = new Blob([JSON.stringify(importHistory, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `HISTORICO_ARQUIVOS_IMPORTADOS_${new Date().toISOString().split('T')[0]}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 transition-all cursor-pointer flex items-center gap-1"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Exportar JSON de Importações</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const blob = new Blob([JSON.stringify(importHistory, null, 2)], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `HISTORICO_ARQUIVOS_IMPORTADOS_${new Date().toISOString().split('T')[0]}.json`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                className="text-[11px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2.5 py-1 rounded border border-blue-200 transition-all cursor-pointer flex items-center gap-1"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Exportar JSON</span>
+              </button>
+              <button
+                onClick={handleClearAllHistory}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded border border-rose-200 transition-all cursor-pointer flex items-center gap-1"
+                title="Apagar todo o histórico de arquivos e cargas importadas"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar Todo o Histórico</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -396,6 +453,7 @@ Nº Material	Desc. Material	Nº Lote	Depósito	Data Vencimento	Estoque Utiliz. L
                   <th className="p-2.5 text-right">Estoque Livre Total</th>
                   <th className="p-2.5">Usuário</th>
                   <th className="p-2.5 text-center">Status</th>
+                  <th className="p-2.5 text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -419,6 +477,15 @@ Nº Material	Desc. Material	Nº Lote	Depósito	Data Vencimento	Estoque Utiliz. L
                         Sucesso
                       </span>
                     </td>
+                    <td className="p-2.5 text-center">
+                      <button
+                        onClick={(e) => handleDeleteSingleHistory(imp.id, e)}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                        title="Apagar este registro do histórico"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -426,6 +493,14 @@ Nº Material	Desc. Material	Nº Lote	Depósito	Data Vencimento	Estoque Utiliz. L
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

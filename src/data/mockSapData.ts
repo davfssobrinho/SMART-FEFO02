@@ -679,7 +679,7 @@ const rawMockLotes: SapLoteItem[] = [
   }
 ];
 
-// Return recalculating FEFO priorities
+// Clean default state: return empty array by default so no mock/example data appears
 export function getInitialMockLotes(): SapLoteItem[] {
-  return recalculateFEFO(rawMockLotes);
+  return [];
 }

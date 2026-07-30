@@ -13,9 +13,12 @@ import {
   ShieldCheck,
   AlertCircle,
   Factory,
+  Trash2,
+  Download,
 } from 'lucide-react';
 import { AtendimentoHistorico, StatusControle } from '../types';
 import { formatNumberBR } from '../services/fefoEngine';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 interface HistoricoViewProps {
   historicoList: AtendimentoHistorico[];
@@ -25,16 +28,31 @@ interface HistoricoViewProps {
     usuarioControle: string,
     observacao?: string
   ) => void;
+  onDeleteSingleHistorico?: (id: string) => void;
+  onClearAllHistorico?: () => void;
   activeUserName?: string;
 }
 
 export const HistoricoView: React.FC<HistoricoViewProps> = ({
   historicoList,
   onUpdateStatus,
+  onDeleteSingleHistorico,
+  onClearAllHistorico,
   activeUserName = 'Time de Controle SAP',
 }) => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('TODOS');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   const searchLower = searchTerm.toLowerCase().trim();
   const filteredHistory = historicoList.filter((item) => {
@@ -174,11 +192,43 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
 
       {/* Main Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 bg-slate-900 text-white flex justify-between items-center">
+        <div className="p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h3 className="text-xs font-black uppercase tracking-wider flex items-center gap-2">
             <Factory className="w-4 h-4 text-blue-400" />
             Painel Unificado: Produção, Conferência e Time de Controle ({filteredHistory.length})
           </h3>
+
+          <div className="flex items-center gap-2">
+            {filteredHistory.length > 0 && (
+              <button
+                onClick={handleExportExcel}
+                className="text-xs font-extrabold bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Exportar Excel</span>
+              </button>
+            )}
+
+            {historicoList.length > 0 && onClearAllHistorico && (
+              <button
+                onClick={() => {
+                  setConfirmModal({
+                    isOpen: true,
+                    title: 'Limpar Todo o Histórico de Reservas',
+                    message: 'Tem certeza de que deseja apagar TODO o histórico de atendimentos e reservas salvas? Esta ação não pode ser desfeita.',
+                    onConfirm: () => {
+                      onClearAllHistorico();
+                    },
+                  });
+                }}
+                className="text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="Apagar todo o histórico de atendimentos e reservas"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Limpar Histórico</span>
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="overflow-x-auto">
@@ -197,12 +247,15 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
                 <th className="p-3 bg-slate-200/70 text-slate-900 text-center">
                   4. Time de Controle (Status Baixa)
                 </th>
+                <th className="p-3 text-slate-900 text-center w-12">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredHistory.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="p-8 text-center text-slate-400">
+                  <td colSpan={5} className="p-8 text-center text-slate-400">
                     Nenhuma reserva encontrada.
                   </td>
                 </tr>
@@ -330,6 +383,28 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
                           </button>
                         </div>
                       </td>
+
+                      {/* 5. Ações (Excluir item) */}
+                      <td className="p-3 text-center align-middle">
+                        {onDeleteSingleHistorico && (
+                          <button
+                            onClick={() => {
+                              setConfirmModal({
+                                isOpen: true,
+                                title: 'Apagar Registro de Reserva',
+                                message: `Deseja realmente apagar o registro da Reserva Nº ${item.numeroReserva || item.id}?`,
+                                onConfirm: () => {
+                                  onDeleteSingleHistorico(item.id);
+                                },
+                              });
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Apagar este registro do histórico"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
@@ -338,6 +413,14 @@ export const HistoricoView: React.FC<HistoricoViewProps> = ({
           </table>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

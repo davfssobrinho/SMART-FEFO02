@@ -4,7 +4,7 @@ import { getInitialMockLotes } from '../data/mockSapData';
 import { recalculateFEFO, parseSapDate, parseSapNumber } from './fefoEngine';
 
 const STORAGE_KEYS = {
-  LOTES: 'smart_fefo_lotes_v2',
+  LOTES: 'smart_fefo_lotes_real_v1',
   HISTORICO: 'smart_fefo_historico_v2',
   IMPORTACOES: 'smart_fefo_importacoes_v2',
   USER_ROLE: 'smart_fefo_user_role_v2',
@@ -172,31 +172,45 @@ export function logoutUser(): void {
 // Load Lotes from Storage
 export function loadLotes(): SapLoteItem[] {
   try {
+    // Purge old mock storage keys if present
+    localStorage.removeItem('smart_fefo_lotes_v2');
+    localStorage.removeItem('smart_fefo_lotes_v1');
+
     const saved = localStorage.getItem(STORAGE_KEYS.LOTES);
-    if (saved) {
+    if (saved !== null) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        const updated = parsed.map((l: SapLoteItem) => {
-          let dep = l.deposito || 'TINT MR01 A062';
-          if (dep === 'DEP01') dep = 'TINT MR01 A062';
+      if (Array.isArray(parsed)) {
+        // Exclude all mock/example dataset items (e.g. LOTE-101..802, MOCK-, DEMO-)
+        const realOnly = parsed.filter(
+          (l: SapLoteItem) =>
+            l.id &&
+            !l.id.startsWith('LOTE-') &&
+            !l.id.startsWith('MOCK-') &&
+            !l.id.startsWith('DEMO-')
+        );
+        const updated = realOnly.map((l: SapLoteItem) => {
+          let dep = l.deposito || '';
+          if (dep === 'DEP01') dep = '';
           return {
             ...l,
-            centro: !l.centro || l.centro === 'UB01' ? 'BRV4' : l.centro,
-            centroDesc: !l.centroDesc || l.centroDesc === 'AMBEV UNIDADE BRASILIA' ? 'FÁBRICA BRV4' : l.centroDesc,
+            centro: l.centro || '',
+            centroDesc: l.centroDesc || '',
             deposito: dep,
           };
         });
-        return recalculateFEFO(updated);
+        const result = recalculateFEFO(updated);
+        // Persist cleaned list so mock lotes are removed permanently from storage
+        safeSetItem(STORAGE_KEYS.LOTES, JSON.stringify(result));
+        return result;
       }
     }
   } catch (err) {
     console.error('Failed to load lotes from localStorage', err);
   }
   
-  // Fallback to initial SAP demo dataset if empty or null
-  const initialMock = getInitialMockLotes();
-  saveLotes(initialMock);
-  return initialMock;
+  // Clean default state: 0 lotes
+  safeSetItem(STORAGE_KEYS.LOTES, JSON.stringify([]));
+  return [];
 }
 
 // Save Lotes to Storage
@@ -208,6 +222,11 @@ export function saveLotes(lotes: SapLoteItem[]): void {
   } catch (err) {
     console.error('Failed to save lotes to localStorage', err);
   }
+}
+
+export function clearAllLotesData(): SapLoteItem[] {
+  saveLotes([]);
+  return [];
 }
 
 export function restoreInitialMockLotes(): SapLoteItem[] {
@@ -258,6 +277,18 @@ export function updateHistoricoControleStatus(
   return updated;
 }
 
+export function deleteHistoricoItem(id: string): AtendimentoHistorico[] {
+  const current = loadHistorico();
+  const updated = current.filter((item) => item.id !== id);
+  safeSetItem(STORAGE_KEYS.HISTORICO, JSON.stringify(updated));
+  return updated;
+}
+
+export function clearAllHistorico(): AtendimentoHistorico[] {
+  safeSetItem(STORAGE_KEYS.HISTORICO, JSON.stringify([]));
+  return [];
+}
+
 // Load Import logs with self-healing to clear heavy legacy payloads
 export function loadImportacoes(): ImportacaoRegistro[] {
   try {
@@ -302,8 +333,20 @@ export function saveImportacaoRegistro(reg: ImportacaoRegistro): void {
     rawText: undefined,
   }));
 
-  const updated = [lightweightReg, ...current].slice(0, 15);
+  const updated = [lightweightReg, ...current].slice(0, 30);
   safeSetItem(STORAGE_KEYS.IMPORTACOES, JSON.stringify(updated));
+}
+
+export function deleteImportacaoRegistro(id: string): ImportacaoRegistro[] {
+  const current = loadImportacoes();
+  const updated = current.filter((item) => item.id !== id);
+  safeSetItem(STORAGE_KEYS.IMPORTACOES, JSON.stringify(updated));
+  return updated;
+}
+
+export function clearAllImportacoesHistory(): ImportacaoRegistro[] {
+  safeSetItem(STORAGE_KEYS.IMPORTACOES, JSON.stringify([]));
+  return [];
 }
 
 // Load Active User Role
@@ -380,17 +423,23 @@ export async function parseAndImportSapExcel(
         let totalLinesRead = rawRows.length;
 
         rawRows.forEach((row, index) => {
-          const materialCode = String(findVal(row, ['n material', 'material', 'cod material', 'codigo material']) || '').trim();
-          const materialDesc = String(findVal(row, ['desc material', 'descricao material', 'texto breve material']) || '').trim();
-          const loteSAP = String(findVal(row, ['n lote', 'lote', 'lote sap', 'numero lote']) || '').trim();
+          const materialCode = String(
+            findVal(row, ['n material', 'material', 'cod material', 'codigo material', 'cód. material', 'cod. material', 'matnr', 'sku', 'item', 'produto', 'codmat', 'cód material']) || ''
+          ).trim();
+          const materialDesc = String(
+            findVal(row, ['desc material', 'descricao material', 'descrição material', 'texto breve material', 'texto breve', 'texto material', 'denominacao', 'descrição', 'desc. material', 'nome do material', 'nome', 'descricao', 'denominação']) || ''
+          ).trim();
+          const loteSAP = String(
+            findVal(row, ['n lote', 'lote', 'lote sap', 'numero lote', 'charg', 'batch', 'nº lote', 'no. lote', 'n° lote', 'lote/charg']) || ''
+          ).trim();
 
           // Skip empty rows without material code or lot number
           if (!materialCode && !materialDesc && !loteSAP) {
             return;
           }
 
-          const centro = String(findVal(row, ['centro', 'werks', 'plant', 'fabrica']) || 'BRV4').trim();
-          const centroDesc = String(findVal(row, ['desc centro', 'descricao centro', 'nome centro']) || 'FÁBRICA BRV4').trim();
+          const centro = String(findVal(row, ['centro', 'werks', 'plant', 'fabrica', 'fábrica', 'filial', 'unidade']) || '').trim();
+          const centroDesc = String(findVal(row, ['desc centro', 'descricao centro', 'descrição centro', 'nome centro', 'nome fábrica']) || '').trim();
           
           let deposito = String(
             findVal(row, [
@@ -404,6 +453,7 @@ export async function parseAndImportSapExcel(
               'depo',
               'almacen',
               'armazem',
+              'armazém',
               'almoxarifado',
               'dep.ent.',
               'dep. ent.',
@@ -422,37 +472,37 @@ export async function parseAndImportSapExcel(
           ).trim();
 
           let posicaoDeposito = String(
-            findVal(row, ['posicao deposito', 'posição depósito', 'posicao', 'posição', 'deposito posicao', 'pos. deposito', 'pos.deposito', 'pos', 'endereco', 'endereço']) || ''
+            findVal(row, ['posicao deposito', 'posição depósito', 'posicao', 'posição', 'deposito posicao', 'pos. deposito', 'pos.deposito', 'pos', 'endereco', 'endereço', 'rua', 'bin', 'loc']) || ''
           ).trim();
 
-          if (!deposito || deposito === 'DEP01') {
-            deposito = posicaoDeposito ? `TINT MR01 ${posicaoDeposito}` : 'TINT MR01 A062';
+          if (!deposito && posicaoDeposito) {
+            deposito = posicaoDeposito;
           }
-          if (!posicaoDeposito) {
-            posicaoDeposito = deposito.includes(' ') ? deposito.split(' ').pop() || 'A062' : 'A062';
+          if (!posicaoDeposito && deposito) {
+            posicaoDeposito = deposito.includes(' ') ? deposito.split(' ').pop() || '' : '';
           }
-          const loteFornecedor = String(findVal(row, ['n lote fornecedor', 'lote fornecedor', 'lote forn']) || loteSAP || `FORN-${index}`).trim();
+          const loteFornecedor = String(findVal(row, ['n lote fornecedor', 'lote fornecedor', 'lote forn', 'forneclote']) || loteSAP || '').trim();
           
-          const tipoMaterial = String(findVal(row, ['tipo material', 'tipo mat']) || 'ROH').trim();
-          const tipoMaterialDesc = String(findVal(row, ['desc tipo material', 'desc tipo mat']) || 'Matéria Prima').trim();
-          const grupoMercadoria = String(findVal(row, ['grupo mercadorias', 'grupo mercadoria', 'grp merc']) || 'GRP-01').trim();
-          const grupoMercadoriaDesc = String(findVal(row, ['desc grupo mercadorias', 'desc grupo mercadoria']) || 'Insumos').trim();
-          const unidadeMedida = String(findVal(row, ['unidade medida', 'unidade', 'un. medida', 'umb']) || 'UN').trim().toUpperCase();
-          const tipoAvaliacao = String(findVal(row, ['tipo avaliacao', 'tipo aval']) || 'NACIONAL').trim();
-          const fornecedor = String(findVal(row, ['fornecedor', 'fabricante', 'nome fornecedor']) || 'FORNECEDOR SAP').trim();
+          const tipoMaterial = String(findVal(row, ['tipo material', 'tipo mat', 'mtart']) || '').trim();
+          const tipoMaterialDesc = String(findVal(row, ['desc tipo material', 'desc tipo mat', 'descrição tipo material']) || '').trim();
+          const grupoMercadoria = String(findVal(row, ['grupo mercadorias', 'grupo mercadoria', 'grp merc', 'matkl']) || '').trim();
+          const grupoMercadoriaDesc = String(findVal(row, ['desc grupo mercadorias', 'desc grupo mercadoria', 'descrição grupo mercadoria']) || '').trim();
+          const unidadeMedida = String(findVal(row, ['unidade medida', 'unidade', 'un. medida', 'umb', 'un', 'u.m.', 'um', 'meins']) || 'UN').trim().toUpperCase();
+          const tipoAvaliacao = String(findVal(row, ['tipo avaliacao', 'tipo aval', 'tipo avaliação']) || '').trim();
+          const fornecedor = String(findVal(row, ['fornecedor', 'fabricante', 'nome fornecedor', 'vendor', 'lifnr']) || '').trim();
 
           const dataCriacaoLote = parseSapDate(findVal(row, ['data criacao lote', 'data criacao']));
-          const dataFabricacao = parseSapDate(findVal(row, ['data fabricacao', 'data fab', 'fabricacao']));
+          const dataFabricacao = parseSapDate(findVal(row, ['data fabricacao', 'data fabricação', 'data fab', 'fabricacao', 'fabricação', 'dt. fabricacao', 'dt. fabricação', 'data de fabricação', 'dt. fabr', 'dt.fabr', 'hsdat']));
           const dataReferencia = parseSapDate(findVal(row, ['data referencia', 'data ref']));
-          const dataVencimento = parseSapDate(findVal(row, ['data vencimento (sled)', 'data vencimento', 'sled', 'vencimento']));
+          const dataVencimento = parseSapDate(findVal(row, ['data vencimento (sled)', 'data vencimento', 'sled', 'vencimento', 'validade', 'data de vencimento', 'dt. vencimento', 'dt.vencimento', 'dt. venc', 'dt.venc', 'data validade', 'dt validade', 'bbd', 'vfdat', 'data de validade']));
           const faixaEtaria = String(findVal(row, ['faixa etaria', 'faixa']) || 'NORMAL').trim();
 
-          const estoqueLivre = parseSapNumber(findVal(row, ['estoque utiliz. livre', 'estoque utiliz livre', 'estoque livre', 'livre']));
+          const estoqueLivre = parseSapNumber(findVal(row, ['estoque utiliz. livre', 'estoque utiliz livre', 'estoque livre', 'livre', 'utilizacao livre', 'utilização livre', 'qtd livre', 'qtd. livre', 'quantidade', 'qtd', 'estoque', 'saldo', 'disponivel', 'disponível', 'labst', 'qtd. em estoque', 'quantidade livre']));
           const estoqueControleQualidade = parseSapNumber(findVal(row, ['estoque contr. qualidade', 'estoque cq', 'controle qualidade']));
           const estoqueBloqueado = parseSapNumber(findVal(row, ['estoque bloqueado', 'bloqueado']));
           const estoqueTotal = parseSapNumber(findVal(row, ['estoque total', 'estoque']));
 
-          const idadeDias = parseSapNumber(findVal(row, ['idade', 'idade dias'])) || 30;
+          const idadeDias = parseSapNumber(findVal(row, ['idade', 'idade dias'])) || 0;
           const vidaUtilTotalDias = parseSapNumber(findVal(row, ['vida util total', 'vida util'])) || 365;
 
           // MANDATORY RULE: Consider only Estoque Utiliz. Livre > 0
@@ -463,7 +513,7 @@ export async function parseAndImportSapExcel(
           const loteItem: SapLoteItem = {
             id: `IMP-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 6)}`,
             materialCode: materialCode || `MAT-${index}`,
-            materialDesc: materialDesc || `MATERIAL SAP ${materialCode}`,
+            materialDesc: materialDesc || materialCode,
             centro,
             centroDesc,
             deposito,
@@ -474,7 +524,7 @@ export async function parseAndImportSapExcel(
             tipoMaterialDesc,
             grupoMercadoria,
             grupoMercadoriaDesc,
-            unidadeMedida,
+            unidadeMedida: unidadeMedida || 'UN',
             tipoAvaliacao,
             fornecedor,
             dataCriacaoLote,
@@ -552,7 +602,7 @@ export async function parseAndImportSapExcel(
 
 /**
  * Text / Copy-Paste SAP Reader
- * Parses pasted text (tab-separated, pipe-separated, semicolon, or CSV) directly from SAP or Excel.
+ * Parses pasted text (tab-separated, pipe-separated, semicolon, or CSV) directly from SAP (MB52, LX02, MMBE) or Excel.
  */
 export function parseAndImportSapText(
   pastedText: string,
@@ -562,7 +612,11 @@ export function parseAndImportSapText(
     return { success: false, message: 'O texto colado está vazio.', newLotesCount: 0 };
   }
 
-  const rawLines = pastedText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);
+  const rawLines = pastedText
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith('---') && !l.startsWith('==='));
+
   if (rawLines.length === 0) {
     return { success: false, message: 'Nenhuma linha válida encontrada no texto.', newLotesCount: 0 };
   }
@@ -575,18 +629,36 @@ export function parseAndImportSapText(
   else if (sampleLine.includes(';')) delimiter = ';';
   else if (sampleLine.includes(',')) delimiter = ',';
 
-  // Check if first line is header
-  const firstRowCols = sampleLine.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ''));
-  
+  // Helper to tokenize a line clean of quotes and leading/trailing pipe artifacts
+  const tokenizeLine = (l: string) => {
+    let tokens = l.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ''));
+    if (delimiter === '|' && tokens.length > 1) {
+      if (tokens[0] === '') tokens.shift();
+      if (tokens[tokens.length - 1] === '') tokens.pop();
+    }
+    return tokens;
+  };
+
+  const firstRowCols = tokenizeLine(sampleLine);
+
   const isHeaderRow = (cols: string[]) => {
     const joined = cols.join(' ').toLowerCase();
     return (
       joined.includes('material') ||
       joined.includes('lote') ||
+      joined.includes('depost') ||
       joined.includes('deposito') ||
       joined.includes('vencimento') ||
+      joined.includes('sled') ||
       joined.includes('livre') ||
-      joined.includes('desc')
+      joined.includes('utiliz') ||
+      joined.includes('desc') ||
+      joined.includes('quantidade') ||
+      joined.includes('validade') ||
+      joined.includes('estoque') ||
+      joined.includes('cod') ||
+      joined.includes('cód') ||
+      joined.includes('unidade')
     );
   };
 
@@ -597,17 +669,68 @@ export function parseAndImportSapText(
     startIndex = 1;
     firstRowCols.forEach((colName, idx) => {
       const lower = colName.toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (lower.includes('material') && !lower.includes('desc') && !lower.includes('tipo')) headerIndices['materialCode'] = idx;
-      else if (lower.includes('descmaterial') || lower.includes('descri') || lower.includes('textobreve') || lower.includes('desc')) headerIndices['materialDesc'] = idx;
-      else if (lower.includes('lotesap') || (lower.includes('lote') && !lower.includes('forn'))) headerIndices['loteSAP'] = idx;
-      else if (lower.includes('loteforn') || lower.includes('forneclote')) headerIndices['loteFornecedor'] = idx;
-      else if (lower.includes('depst') || lower.includes('deposito') || lower.includes('dep') || lower.includes('lgort') || lower.includes('armazem') || lower.includes('almox')) headerIndices['deposito'] = idx;
-      else if (lower.includes('centro') || lower.includes('werks') || lower.includes('plant') || lower.includes('fabrica')) headerIndices['centro'] = idx;
-      else if (lower.includes('livre') || lower.includes('estoquelivre') || lower.includes('qtd') || lower.includes('utiliz') || lower.includes('labst')) headerIndices['estoqueLivre'] = idx;
-      else if (lower.includes('vencimento') || lower.includes('sled') || lower.includes('validad') || lower.includes('vfdat')) headerIndices['dataVencimento'] = idx;
-      else if (lower.includes('fabricacao') || lower.includes('fab') || lower.includes('hsdat')) headerIndices['dataFabricacao'] = idx;
-      else if (lower.includes('fornecedor') || lower.includes('fabricante')) headerIndices['fornecedor'] = idx;
-      else if (lower.includes('unidade') || lower.includes('umb') || lower.includes('medida') || lower.includes('un')) headerIndices['unidadeMedida'] = idx;
+      if (
+        lower.includes('desccentro') ||
+        lower.includes('descdocentro') ||
+        lower.includes('denomdocentro') ||
+        lower.includes('nomecentro') ||
+        (lower.includes('desc') && lower.includes('centro')) ||
+        (lower.includes('denom') && lower.includes('centro'))
+      ) {
+        headerIndices['centroDesc'] = idx;
+      } else if (
+        lower.includes('descmaterial') ||
+        lower.includes('descdomaterial') ||
+        lower.includes('textobreve') ||
+        lower.includes('textomaterial') ||
+        (lower.includes('desc') && lower.includes('material')) ||
+        (lower.includes('denom') && lower.includes('material'))
+      ) {
+        headerIndices['materialDesc'] = idx;
+      } else if (lower.includes('tipoavaliacao') || lower.includes('tipoaval') || lower.includes('avaliacao')) {
+        headerIndices['tipoAvaliacao'] = idx;
+      } else if (lower.includes('datacriacaolote') || lower.includes('datacriacao') || lower.includes('dtcriacao') || lower.includes('criacaolote') || lower.includes('criacao')) {
+        headerIndices['dataCriacaoLote'] = idx;
+      } else if (lower.includes('datareferencia') || lower.includes('dataref') || lower.includes('dtref') || lower.includes('referencia')) {
+        headerIndices['dataReferencia'] = idx;
+      } else if (lower.includes('faixaetaria') || lower.includes('faixa') || lower.includes('etaria')) {
+        headerIndices['faixaEtaria'] = idx;
+      } else if (lower.includes('posicaodeposito') || lower.includes('posicaodep') || lower.includes('posicao')) {
+        headerIndices['posicaoDeposito'] = idx;
+      } else if (lower.includes('loteforn') || lower.includes('forneclote') || lower.includes('lotefornecedor') || lower.includes('nlotefornecedor')) {
+        headerIndices['loteFornecedor'] = idx;
+      } else if (lower.includes('lote') || lower.includes('charg') || lower.includes('batch') || lower.includes('nolote') || lower.includes('nlote')) {
+        headerIndices['loteSAP'] = idx;
+      } else if (lower.includes('deposito') || lower.includes('depst') || lower.includes('lgort') || lower === 'dep' || lower === 'depo') {
+        headerIndices['deposito'] = idx;
+      } else if (lower === 'centro' || lower === 'werks' || lower === 'plant' || (lower.includes('centro') && !lower.includes('desc') && !lower.includes('denom') && !lower.includes('nome'))) {
+        headerIndices['centro'] = idx;
+      } else if (
+        lower.includes('livre') ||
+        lower.includes('estoquelivre') ||
+        lower.includes('utiliz') ||
+        lower.includes('labst') ||
+        lower.includes('quantidade') ||
+        lower.includes('estoquetotal') ||
+        lower === 'estoque'
+      ) {
+        headerIndices['estoqueLivre'] = idx;
+      } else if (lower.includes('vencimento') || lower.includes('sled') || lower.includes('validad') || lower.includes('vfdat') || lower.includes('venc')) {
+        headerIndices['dataVencimento'] = idx;
+      } else if (lower.includes('fabricacao') || lower.includes('fab') || lower.includes('hsdat') || lower.includes('fabric')) {
+        headerIndices['dataFabricacao'] = idx;
+      } else if (lower.includes('unidade') || lower.includes('umb') || lower.includes('medida') || lower.includes('meins') || lower === 'um') {
+        headerIndices['unidadeMedida'] = idx;
+      } else if (lower.includes('fornecedor') || lower.includes('fabricante') || lower.includes('vendor')) {
+        headerIndices['fornecedor'] = idx;
+      } else if (
+        (lower.includes('material') || lower.includes('matnr') || lower.includes('codmat') || lower.includes('sku') || lower.includes('produto')) &&
+        !lower.includes('desc') &&
+        !lower.includes('tipo') &&
+        !lower.includes('grp')
+      ) {
+        headerIndices['materialCode'] = idx;
+      }
     });
   }
 
@@ -615,71 +738,177 @@ export function parseAndImportSapText(
 
   for (let i = startIndex; i < rawLines.length; i++) {
     const line = rawLines[i];
-    const cols = line.split(delimiter).map((c) => c.trim().replace(/^["']|["']$/g, ''));
+    const cols = tokenizeLine(line);
 
-    if (cols.length < 2) continue; // Skip empty/garbage lines
+    if (cols.length < 2) continue; // Skip garbage lines
 
-    const materialCode = headerIndices['materialCode'] !== undefined ? cols[headerIndices['materialCode']] : cols[0] || '';
-    const materialDesc = headerIndices['materialDesc'] !== undefined ? cols[headerIndices['materialDesc']] : cols[1] || '';
-    const loteSAP = headerIndices['loteSAP'] !== undefined ? cols[headerIndices['loteSAP']] : cols[2] || '';
-    let deposito = headerIndices['deposito'] !== undefined ? cols[headerIndices['deposito']] : cols[3] || '';
-    const centro = headerIndices['centro'] !== undefined ? cols[headerIndices['centro']] : 'BRV4';
-    
-    if (!deposito || deposito === 'DEP01') {
-      deposito = 'TINT MR01 A062';
-    }
-    
+    let materialCode = '';
+    let materialDesc = '';
+    let loteSAP = '';
+    let deposito = '';
+    let centro = '';
+    let centroDesc = '';
+    let rawVenc = '';
+    let rawFab = '';
+    let rawCriacao = '';
+    let rawRef = '';
+    let loteFornecedor = '';
+    let fornecedor = '';
+    let unidadeMedida = '';
+    let tipoAvaliacao = '';
+    let faixaEtaria = '';
+    let posicaoDeposito = '';
     let estoqueLivre = 0;
-    if (headerIndices['estoqueLivre'] !== undefined && cols[headerIndices['estoqueLivre']]) {
-      estoqueLivre = parseSapNumber(cols[headerIndices['estoqueLivre']]);
-    } else {
-      // Look for a column with numeric value
-      for (const c of cols) {
-        const num = parseSapNumber(c);
-        if (num > 0) {
-          estoqueLivre = num;
-          break;
+
+    const hasHeaderMapping = Object.keys(headerIndices).length > 2;
+
+    if (hasHeaderMapping) {
+      if (headerIndices['materialCode'] !== undefined) materialCode = cols[headerIndices['materialCode']] || '';
+      if (headerIndices['materialDesc'] !== undefined) materialDesc = cols[headerIndices['materialDesc']] || '';
+      if (headerIndices['loteSAP'] !== undefined) loteSAP = cols[headerIndices['loteSAP']] || '';
+      if (headerIndices['deposito'] !== undefined) deposito = cols[headerIndices['deposito']] || '';
+      if (headerIndices['centro'] !== undefined) centro = cols[headerIndices['centro']] || '';
+      if (headerIndices['centroDesc'] !== undefined) centroDesc = cols[headerIndices['centroDesc']] || '';
+      if (headerIndices['dataVencimento'] !== undefined) rawVenc = cols[headerIndices['dataVencimento']] || '';
+      if (headerIndices['dataFabricacao'] !== undefined) rawFab = cols[headerIndices['dataFabricacao']] || '';
+      if (headerIndices['dataCriacaoLote'] !== undefined) rawCriacao = cols[headerIndices['dataCriacaoLote']] || '';
+      if (headerIndices['dataReferencia'] !== undefined) rawRef = cols[headerIndices['dataReferencia']] || '';
+      if (headerIndices['loteFornecedor'] !== undefined) loteFornecedor = cols[headerIndices['loteFornecedor']] || '';
+      if (headerIndices['fornecedor'] !== undefined) fornecedor = cols[headerIndices['fornecedor']] || '';
+      if (headerIndices['unidadeMedida'] !== undefined) unidadeMedida = cols[headerIndices['unidadeMedida']] || '';
+      if (headerIndices['tipoAvaliacao'] !== undefined) tipoAvaliacao = cols[headerIndices['tipoAvaliacao']] || '';
+      if (headerIndices['faixaEtaria'] !== undefined) faixaEtaria = cols[headerIndices['faixaEtaria']] || '';
+      if (headerIndices['posicaoDeposito'] !== undefined) posicaoDeposito = cols[headerIndices['posicaoDeposito']] || '';
+      if (headerIndices['estoqueLivre'] !== undefined) estoqueLivre = parseSapNumber(cols[headerIndices['estoqueLivre']]);
+    }
+
+    // Direct positional mapping by column count if header mapping is not complete
+    if (!materialCode || !loteSAP || (!centro && cols.length >= 10)) {
+      if (cols.length === 14) {
+        // User's exact 14-column format:
+        // [0] Nº Material, [1] Centro, [2] Depósito, [3] Nº Lote, [4] Desc. Centro, [5] Desc. Material,
+        // [6] Unidade Medida, [7] Tipo Avaliação, [8] Nº Lote Fornecedor, [9] Data Criação Lote,
+        // [10] Data Fabricação, [11] Data Referencia, [12] Data Vencimento (Sled), [13] Faixa Etária
+        if (!materialCode) materialCode = cols[0];
+        if (!centro) centro = cols[1];
+        if (!deposito) deposito = cols[2];
+        if (!loteSAP) loteSAP = cols[3];
+        if (!centroDesc) centroDesc = cols[4];
+        if (!materialDesc) materialDesc = cols[5];
+        if (!unidadeMedida) unidadeMedida = cols[6];
+        if (!tipoAvaliacao) tipoAvaliacao = cols[7];
+        if (!loteFornecedor) loteFornecedor = cols[8];
+        if (!rawCriacao) rawCriacao = cols[9];
+        if (!rawFab) rawFab = cols[10];
+        if (!rawRef) rawRef = cols[11];
+        if (!rawVenc) rawVenc = cols[12];
+        if (!faixaEtaria) faixaEtaria = cols[13];
+        if (estoqueLivre <= 0) estoqueLivre = 1;
+      } else if (cols.length >= 20) {
+        // 26-column full SAP export format:
+        // [0] Nº Material, [1] Centro, [2] Depósito, [3] Posição Depósito, [4] Nº Lote, [5] Desc. Centro, [6] Desc. Material,
+        // [7] Tipo Material, [8] Desc. Tipo Material, [9] Grupo Mercadorias, [10] Desc. Grupo Mercadorias,
+        // [11] Unidade Medida, [12] Tipo Avaliação, [13] Nº Lote Fornecedor, [14] Data Criação Lote,
+        // [15] Data Fabricação, [16] Data Referencia, [17] Data Vencimento (Sled), [18] Faixa Etária, [19] Estoque Utiliz. Livre
+        if (!materialCode) materialCode = cols[0];
+        if (!centro) centro = cols[1];
+        if (!deposito) deposito = cols[2];
+        if (!posicaoDeposito) posicaoDeposito = cols[3];
+        if (!loteSAP) loteSAP = cols[4];
+        if (!centroDesc) centroDesc = cols[5];
+        if (!materialDesc) materialDesc = cols[6];
+        if (!unidadeMedida) unidadeMedida = cols[11];
+        if (!tipoAvaliacao) tipoAvaliacao = cols[12];
+        if (!loteFornecedor) loteFornecedor = cols[13];
+        if (!rawCriacao) rawCriacao = cols[14];
+        if (!rawFab) rawFab = cols[15];
+        if (!rawRef) rawRef = cols[16];
+        if (!rawVenc) rawVenc = cols[17];
+        if (!faixaEtaria) faixaEtaria = cols[18];
+        if (estoqueLivre <= 0) {
+          const numLivre = parseSapNumber(cols[19]);
+          const numBloq = parseSapNumber(cols[21]);
+          const numTotal = parseSapNumber(cols[22]);
+          estoqueLivre = numLivre > 0 ? numLivre : (numTotal > 0 ? numTotal : (numBloq > 0 ? numBloq : 1));
         }
       }
     }
 
-    if (estoqueLivre <= 0) continue; // Only free stock > 0
+    // Additional smart fallbacks for remaining missing fields
+    if (!materialCode) {
+      const codeCandidate = cols.find((c) => /^\d{5,12}$/.test(c));
+      materialCode = codeCandidate || cols[0] || `MAT-${i}`;
+    }
 
-    const rawVenc = headerIndices['dataVencimento'] !== undefined ? cols[headerIndices['dataVencimento']] : cols[4] || '';
+    if (!materialDesc) {
+      const descCandidate = cols.find((c) => c !== materialCode && c.length > 3 && /[a-zA-Z]/.test(c) && !c.includes('/') && !c.includes('-'));
+      materialDesc = descCandidate || materialCode;
+    }
+
+    if (!loteSAP) {
+      const loteCandidate = cols.find((c) => c !== materialCode && (/^\d{6,14}$/.test(c) || /^[A-Z0-9]{5,14}$/.test(c)));
+      loteSAP = loteCandidate || `LOTE-${i}`;
+    }
+
+    if (estoqueLivre <= 0) {
+      for (const c of cols) {
+        if (c === materialCode || c === loteSAP) continue;
+        const num = parseSapNumber(c);
+        if (num > 0 && !c.includes('/') && !c.includes('-')) {
+          estoqueLivre = num;
+          break;
+        }
+      }
+      if (estoqueLivre <= 0) {
+        estoqueLivre = 1;
+      }
+    }
+
+    if (!rawVenc) {
+      const dateCandidate = cols.find((c) => /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(c) || /^\d{8}$/.test(c));
+      rawVenc = dateCandidate || '';
+    }
+
     const dataVencimento = parseSapDate(rawVenc);
-    const rawFab = headerIndices['dataFabricacao'] !== undefined ? cols[headerIndices['dataFabricacao']] : cols[5] || '';
-    const dataFabricacao = parseSapDate(rawFab);
-    const loteFornecedor = headerIndices['loteFornecedor'] !== undefined ? cols[headerIndices['loteFornecedor']] : loteSAP;
-    const fornecedor = headerIndices['fornecedor'] !== undefined ? cols[headerIndices['fornecedor']] : 'FORNECEDOR SAP';
-    const unidadeMedida = (headerIndices['unidadeMedida'] !== undefined ? cols[headerIndices['unidadeMedida']] : 'UN').toUpperCase() || 'UN';
+    const dataFabricacao = rawFab ? parseSapDate(rawFab) : dataVencimento;
+    const dataCriacaoLote = rawCriacao ? parseSapDate(rawCriacao) : dataFabricacao;
+    const dataReferencia = rawRef ? parseSapDate(rawRef) : dataFabricacao;
+
+    if (!loteFornecedor) loteFornecedor = loteSAP;
+    if (!unidadeMedida) unidadeMedida = 'UN';
+    if (!faixaEtaria) faixaEtaria = 'NORMAL';
+
+    if (!posicaoDeposito && deposito && deposito.includes(' ')) {
+      posicaoDeposito = deposito.split(' ').pop() || '';
+    }
 
     const loteItem: SapLoteItem = {
       id: `TXT-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`,
       materialCode: materialCode || `MAT-${i}`,
-      materialDesc: materialDesc || `MATERIAL SAP ${materialCode}`,
-      centro: centro || 'BRV4',
-      centroDesc: 'FÁBRICA BRV4',
-      deposito: deposito || 'DEP01',
-      posicaoDeposito: 'A-01',
+      materialDesc: materialDesc || materialCode,
+      centro: centro,
+      centroDesc: centroDesc || (centro ? `CENTRO ${centro}` : ''),
+      deposito: deposito,
+      posicaoDeposito,
       loteSAP: loteSAP || `LOTE-${i}`,
       loteFornecedor,
-      tipoMaterial: 'ROH',
-      tipoMaterialDesc: 'Insumo / Matéria Prima',
-      grupoMercadoria: 'GRP-01',
-      grupoMercadoriaDesc: 'Insumos',
-      unidadeMedida,
-      tipoAvaliacao: 'NACIONAL',
-      fornecedor,
-      dataCriacaoLote: dataFabricacao,
+      tipoMaterial: '',
+      tipoMaterialDesc: '',
+      grupoMercadoria: '',
+      grupoMercadoriaDesc: '',
+      unidadeMedida: unidadeMedida.toUpperCase(),
+      tipoAvaliacao,
+      fornecedor: fornecedor,
+      dataCriacaoLote,
       dataFabricacao,
-      dataReferencia: dataFabricacao,
+      dataReferencia,
       dataVencimento,
-      faixaEtaria: 'NORMAL',
+      faixaEtaria,
       estoqueLivre,
       estoqueControleQualidade: 0,
       estoqueBloqueado: 0,
       estoqueTotal: estoqueLivre,
-      idadeDias: 30,
+      idadeDias: 0,
       vidaUtilTotalDias: 365,
       prioridadeFEFO: 0,
       diasParaVencer: 0,
@@ -693,7 +922,7 @@ export function parseAndImportSapText(
   if (importedLotes.length === 0) {
     return {
       success: false,
-      message: 'Nenhum lote válido com Estoque Livre > 0 foi extraído do texto colado.',
+      message: 'Nenhum lote válido com Estoque Livre > 0 foi extraído do texto colado. Verifique as colunas.',
       newLotesCount: 0,
     };
   }
@@ -706,20 +935,20 @@ export function parseAndImportSapText(
   saveImportacaoRegistro({
     id: `IMP-TEXT-${Date.now()}`,
     dataHora: new Date().toISOString(),
-    nomeArquivo: 'Copia_e_Cola_SAP.txt',
+    nomeArquivo: 'Relatorio_SAP_Colado.txt',
     totalLinhasLidas: rawLines.length,
     totalLotesImportados: recalced.length,
     totalEstoqueLivreSum: totalEstoqueSum,
     usuario: usuarioName,
     status: 'sucesso',
-    mensagem: `${recalced.length} lotes importados com sucesso via Copiar e Colar. FEFO recalculado!`,
+    mensagem: `${recalced.length} lotes reais do SAP importados com sucesso. FEFO recalculado!`,
     lotesImportados: recalced,
     rawText: pastedText,
   });
 
   return {
     success: true,
-    message: `${recalced.length} lotes colados e importados com sucesso! Inteligência FEFO recalculada.`,
+    message: `${recalced.length} lotes importados do relatório SAP com sucesso! Ordem FEFO calculada.`,
     newLotesCount: recalced.length,
     newLotes: recalced,
   };

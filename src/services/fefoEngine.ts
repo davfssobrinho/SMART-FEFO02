@@ -20,27 +20,47 @@ export function calculateDaysToExpire(vencimentoDateStr: string): number {
 }
 
 /**
- * Converts various date formats (DD/MM/YYYY, DD.MM.YYYY, YYYY-MM-DD, Excel serialized date) to YYYY-MM-DD
+ * Converts various date formats (DD/MM/YYYY, DD.MM.YYYY, YYYY-MM-DD, YYYYMMDD, Excel serialized date) to YYYY-MM-DD
  */
 export function parseSapDate(value: unknown): string {
   if (!value) return new Date().toISOString().split('T')[0];
 
-  // If already YYYY-MM-DD
-  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
-    return value.trim();
+  const str = String(value).trim();
+  if (!str) return new Date().toISOString().split('T')[0];
+
+  // If YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
   }
 
-  // If DD/MM/YYYY or DD.MM.YYYY
-  if (typeof value === 'string' && /^\d{1,2}[\/\.]\d{1,2}[\/\.]\d{4}$/.test(value.trim())) {
-    const parts = value.trim().split(/[\/\.]/);
+  // If YYYYMMDD (e.g., SAP raw format 20260815)
+  if (/^\d{8}$/.test(str)) {
+    const year = str.substring(0, 4);
+    const month = str.substring(4, 6);
+    const day = str.substring(6, 8);
+    return `${year}-${month}-${day}`;
+  }
+
+  // If DD/MM/YYYY or DD.MM.YYYY or DD-MM-YYYY
+  if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{4}$/.test(str)) {
+    const parts = str.split(/[\/\.-]/);
     const day = parts[0].padStart(2, '0');
     const month = parts[1].padStart(2, '0');
     const year = parts[2];
     return `${year}-${month}-${day}`;
   }
 
+  // If DD/MM/YY or DD.MM.YY (2-digit year)
+  if (/^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2}$/.test(str)) {
+    const parts = str.split(/[\/\.-]/);
+    const day = parts[0].padStart(2, '0');
+    const month = parts[1].padStart(2, '0');
+    const year = Number(parts[2]) > 50 ? `19${parts[2]}` : `20${parts[2]}`;
+    return `${year}-${month}-${day}`;
+  }
+
   // If Excel numeric timestamp (e.g. 45200)
-  if (typeof value === 'number' || (!isNaN(Number(value)) && !String(value).includes('-') && !String(value).includes('/'))) {
+  if (typeof value === 'number' || (!isNaN(Number(value)) && !str.includes('-') && !str.includes('/') && !str.includes('.'))) {
     const num = Number(value);
     if (num > 30000 && num < 70000) {
       const excelEpoch = new Date(1899, 11, 30);
@@ -53,7 +73,7 @@ export function parseSapDate(value: unknown): string {
   }
 
   // Fallback try Date parse
-  const parsed = new Date(String(value));
+  const parsed = new Date(str);
   if (!isNaN(parsed.getTime())) {
     return parsed.toISOString().split('T')[0];
   }
@@ -62,19 +82,23 @@ export function parseSapDate(value: unknown): string {
 }
 
 /**
- * Parses Brazilian numbers e.g. "1.250,50" -> 1250.5
+ * Parses numbers from SAP / Excel (e.g. "1.250,50", "1250,5", "1 250,50")
  */
 export function parseSapNumber(value: unknown): number {
   if (value === null || value === undefined || value === '') return 0;
   if (typeof value === 'number') return isNaN(value) ? 0 : value;
 
   let str = String(value).trim();
-  // Remove currency symbol if present
+  // Remove currency symbol and spaces
   str = str.replace(/[R$\s]/g, '');
 
   if (str.includes(',') && str.includes('.')) {
-    // e.g. "1.250,50"
-    str = str.replace(/\./g, '').replace(',', '.');
+    // e.g. "1.250,50" -> 1250.50 or "1,250.50"
+    if (str.lastIndexOf(',') > str.lastIndexOf('.')) {
+      str = str.replace(/\./g, '').replace(',', '.');
+    } else {
+      str = str.replace(/,/g, '');
+    }
   } else if (str.includes(',')) {
     // e.g. "1250,50"
     str = str.replace(',', '.');

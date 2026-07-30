@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Settings,
   Shield,
@@ -11,18 +11,40 @@ import {
   Boxes,
   Cpu,
   CheckCircle2,
+  Trash2,
+  RefreshCw,
+  Database,
+  History,
 } from 'lucide-react';
 import { UserRole } from '../types';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 interface ConfiguracoesViewProps {
   activeRole: UserRole;
   onRoleChange: (role: UserRole) => void;
+  onClearLotes?: () => void;
+  onClearHistorico?: () => void;
+  onResetDemoData?: () => void;
 }
 
 export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
   activeRole,
   onRoleChange,
+  onClearLotes,
+  onClearHistorico,
+  onResetDemoData,
 }) => {
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
   const futureCapabilities = [
     {
       title: 'Single Sign-On (SSO) Microsoft Azure AD',
@@ -152,6 +174,76 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
         </div>
       </div>
 
+      {/* Data Management Section */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
+        <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
+          <Database className="w-4 h-4 text-blue-600" />
+          Gestão de Dados e Limpeza do Histórico
+        </h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          Gerencie a base de dados ativa e o histórico de logs. Você pode zerar a base atual de lotes ou apagar todo o histórico de reservas e arquivos importados a qualquer momento.
+        </p>
+
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          {onClearLotes && (
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Zerar Base de Dados de Estoque',
+                  message: 'Tem certeza de que deseja apagar todos os lotes de estoque da base de dados? Esta ação deixará a base limpa para uma nova carga SAP.',
+                  onConfirm: () => {
+                    onClearLotes();
+                  },
+                });
+              }}
+              className="px-4 py-2.5 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-bold rounded-lg border border-red-200 transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4 text-red-600" />
+              <span>Zerar Base de Dados de Estoque</span>
+            </button>
+          )}
+
+          {onClearHistorico && (
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Limpar Histórico de Atendimentos',
+                  message: 'Tem certeza de que deseja apagar TODO o histórico de atendimentos de reservas e movimentações salvas?',
+                  onConfirm: () => {
+                    onClearHistorico();
+                  },
+                });
+              }}
+              className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg border border-rose-200 transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              <History className="w-4 h-4 text-rose-600" />
+              <span>Limpar Histórico de Atendimentos</span>
+            </button>
+          )}
+
+          {onResetDemoData && (
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  title: 'Restaurar Dados de Demonstração',
+                  message: 'Deseja recarregar o conjunto de dados fictícios originais de teste do SAP?',
+                  onConfirm: () => {
+                    onResetDemoData();
+                  },
+                });
+              }}
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-lg border border-slate-300 transition-colors flex items-center gap-2 cursor-pointer"
+            >
+              <RefreshCw className="w-4 h-4 text-slate-600" />
+              <span>Restaurar Dados de Exemplo</span>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Future Capabilities Grid */}
       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm flex flex-col gap-4">
         <h3 className="text-xs font-black uppercase text-slate-800 tracking-wider flex items-center gap-2">
@@ -184,6 +276,14 @@ export const ConfiguracoesView: React.FC<ConfiguracoesViewProps> = ({
           })}
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };

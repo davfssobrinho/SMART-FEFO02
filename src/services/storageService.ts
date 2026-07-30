@@ -405,17 +405,42 @@ export async function parseAndImportSapExcel(
           return;
         }
 
-        // Helper to match column headers flexibly
-        const findVal = (row: Record<string, unknown>, keywords: string[]): unknown => {
-          for (const key of Object.keys(row)) {
+        // Helper to match column headers flexibly and accurately
+        const findVal = (
+          row: Record<string, unknown>,
+          keywords: string[],
+          excludeSubstrings: string[] = []
+        ): unknown => {
+          const keys = Object.keys(row);
+
+          // Pass 1: Try exact normalized match (e.g. "descmaterial" === "descmaterial")
+          for (const key of keys) {
             const normalizedKey = key.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            if (excludeSubstrings.some((ex) => normalizedKey.includes(ex.toLowerCase().replace(/[^a-z0-9]/g, '')))) {
+              continue;
+            }
             for (const kw of keywords) {
               const normalizedKw = kw.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
-              if (normalizedKey === normalizedKw || normalizedKey.includes(normalizedKw)) {
+              if (normalizedKey === normalizedKw) {
                 return row[key];
               }
             }
           }
+
+          // Pass 2: Try substring match (e.g. normalizedKey.includes(normalizedKw))
+          for (const key of keys) {
+            const normalizedKey = key.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+            if (excludeSubstrings.some((ex) => normalizedKey.includes(ex.toLowerCase().replace(/[^a-z0-9]/g, '')))) {
+              continue;
+            }
+            for (const kw of keywords) {
+              const normalizedKw = kw.toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+              if (normalizedKw.length > 2 && normalizedKey.includes(normalizedKw)) {
+                return row[key];
+              }
+            }
+          }
+
           return '';
         };
 
@@ -424,13 +449,27 @@ export async function parseAndImportSapExcel(
 
         rawRows.forEach((row, index) => {
           const materialCode = String(
-            findVal(row, ['n material', 'material', 'cod material', 'codigo material', 'cód. material', 'cod. material', 'matnr', 'sku', 'item', 'produto', 'codmat', 'cód material']) || ''
+            findVal(
+              row,
+              ['n material', 'material', 'cod material', 'codigo material', 'cód material', 'matnr', 'sku', 'item', 'produto', 'codmat'],
+              ['desc', 'tipo', 'grp', 'grupo', 'centro', 'lote']
+            ) || ''
           ).trim();
+
           const materialDesc = String(
-            findVal(row, ['desc material', 'descricao material', 'descrição material', 'texto breve material', 'texto breve', 'texto material', 'denominacao', 'descrição', 'desc. material', 'nome do material', 'nome', 'descricao', 'denominação']) || ''
+            findVal(
+              row,
+              ['desc material', 'descricao material', 'descrição material', 'texto breve material', 'texto breve', 'desc. material', 'texto material', 'denominacao material', 'denominação material', 'nome do material', 'nome material'],
+              ['tipo', 'grp', 'grupo', 'centro', 'deposito', 'avaliacao', 'fornecedor']
+            ) || ''
           ).trim();
+
           const loteSAP = String(
-            findVal(row, ['n lote', 'lote', 'lote sap', 'numero lote', 'charg', 'batch', 'nº lote', 'no. lote', 'n° lote', 'lote/charg']) || ''
+            findVal(
+              row,
+              ['n lote', 'lote', 'lote sap', 'numero lote', 'charg', 'batch', 'nº lote', 'no. lote', 'n° lote', 'lote/charg'],
+              ['fornecedor', 'forn']
+            ) || ''
           ).trim();
 
           // Skip empty rows without material code or lot number
@@ -438,7 +477,7 @@ export async function parseAndImportSapExcel(
             return;
           }
 
-          const centro = String(findVal(row, ['centro', 'werks', 'plant', 'fabrica', 'fábrica', 'filial', 'unidade']) || '').trim();
+          const centro = String(findVal(row, ['centro', 'werks', 'plant', 'fabrica', 'fábrica', 'filial', 'unidade'], ['desc', 'nome', 'denom']) || '').trim();
           const centroDesc = String(findVal(row, ['desc centro', 'descricao centro', 'descrição centro', 'nome centro', 'nome fábrica']) || '').trim();
           
           let deposito = String(
@@ -468,7 +507,7 @@ export async function parseAndImportSapExcel(
               'localização',
               'dep/pos',
               'dep-pos',
-            ]) || ''
+            ], ['posicao']) || ''
           ).trim();
 
           let posicaoDeposito = String(
@@ -483,10 +522,10 @@ export async function parseAndImportSapExcel(
           }
           const loteFornecedor = String(findVal(row, ['n lote fornecedor', 'lote fornecedor', 'lote forn', 'forneclote']) || loteSAP || '').trim();
           
-          const tipoMaterial = String(findVal(row, ['tipo material', 'tipo mat', 'mtart']) || '').trim();
-          const tipoMaterialDesc = String(findVal(row, ['desc tipo material', 'desc tipo mat', 'descrição tipo material']) || '').trim();
-          const grupoMercadoria = String(findVal(row, ['grupo mercadorias', 'grupo mercadoria', 'grp merc', 'matkl']) || '').trim();
-          const grupoMercadoriaDesc = String(findVal(row, ['desc grupo mercadorias', 'desc grupo mercadoria', 'descrição grupo mercadoria']) || '').trim();
+          const tipoMaterial = String(findVal(row, ['tipo material', 'tipo mat', 'mtart'], ['desc']) || '').trim();
+          const tipoMaterialDesc = String(findVal(row, ['desc tipo material', 'desc tipo mat', 'descrição tipo material', 'descrição do tipo de material', 'desc. tipo mat.'], ['grupo', 'mercadoria']) || '').trim();
+          const grupoMercadoria = String(findVal(row, ['grupo mercadorias', 'grupo mercadoria', 'grp merc', 'matkl'], ['desc']) || '').trim();
+          const grupoMercadoriaDesc = String(findVal(row, ['desc grupo mercadorias', 'desc grupo mercadoria', 'descrição grupo mercadoria', 'desc. grupo mercadorias'], ['tipo']) || '').trim();
           const unidadeMedida = String(findVal(row, ['unidade medida', 'unidade', 'un. medida', 'umb', 'un', 'u.m.', 'um', 'meins']) || 'UN').trim().toUpperCase();
           const tipoAvaliacao = String(findVal(row, ['tipo avaliacao', 'tipo aval', 'tipo avaliação']) || '').trim();
           const fornecedor = String(findVal(row, ['fornecedor', 'fabricante', 'nome fornecedor', 'vendor', 'lifnr']) || '').trim();
@@ -679,12 +718,28 @@ export function parseAndImportSapText(
       ) {
         headerIndices['centroDesc'] = idx;
       } else if (
-        lower.includes('descmaterial') ||
+        lower.includes('desctipomaterial') ||
+        lower.includes('desctipomat') ||
+        lower.includes('descricaotipomaterial') ||
+        (lower.includes('desc') && lower.includes('tipo'))
+      ) {
+        headerIndices['tipoMaterialDesc'] = idx;
+      } else if (
+        lower.includes('descgrupomercadorias') ||
+        lower.includes('descgrp') ||
+        (lower.includes('desc') && lower.includes('grp'))
+      ) {
+        headerIndices['grupoMercadoriaDesc'] = idx;
+      } else if (
+        (lower.includes('descmaterial') ||
         lower.includes('descdomaterial') ||
         lower.includes('textobreve') ||
         lower.includes('textomaterial') ||
         (lower.includes('desc') && lower.includes('material')) ||
-        (lower.includes('denom') && lower.includes('material'))
+        (lower.includes('denom') && lower.includes('material'))) &&
+        !lower.includes('tipo') &&
+        !lower.includes('grp') &&
+        !lower.includes('grupo')
       ) {
         headerIndices['materialDesc'] = idx;
       } else if (lower.includes('tipoavaliacao') || lower.includes('tipoaval') || lower.includes('avaliacao')) {

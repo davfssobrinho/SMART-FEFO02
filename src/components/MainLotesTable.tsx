@@ -272,18 +272,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                 </div>
               </th>
 
-              {/* 5. Desc. Centro */}
-              <th
-                onClick={() => handleSort('centroDesc')}
-                className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap"
-              >
-                <div className="flex items-center gap-1">
-                  <span>Desc. Centro</span>
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                </div>
-              </th>
-
-              {/* 6. Desc. Material */}
+              {/* Desc. Material */}
               <th
                 onClick={() => handleSort('materialDesc')}
                 className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap min-w-[200px]"
@@ -294,7 +283,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                 </div>
               </th>
 
-              {/* 7. Unidade Medida */}
+              {/* Unidade Medida */}
               <th
                 onClick={() => handleSort('unidadeMedida')}
                 className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap text-center"
@@ -305,18 +294,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                 </div>
               </th>
 
-              {/* 8. Tipo Avaliação */}
-              <th
-                onClick={() => handleSort('tipoAvaliacao')}
-                className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap"
-              >
-                <div className="flex items-center gap-1">
-                  <span>Tipo Avaliação</span>
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                </div>
-              </th>
-
-              {/* 9. Nº Lote Fornecedor */}
+              {/* Nº Lote Fornecedor */}
               <th
                 onClick={() => handleSort('loteFornecedor')}
                 className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap"
@@ -327,18 +305,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                 </div>
               </th>
 
-              {/* 10. Data Criação Lote */}
-              <th
-                onClick={() => handleSort('dataCriacaoLote')}
-                className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap"
-              >
-                <div className="flex items-center gap-1">
-                  <span>Data Criação Lote</span>
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                </div>
-              </th>
-
-              {/* 11. Data Fabricação */}
+              {/* Data Fabricação */}
               <th
                 onClick={() => handleSort('dataFabricacao')}
                 className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap"
@@ -349,18 +316,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                 </div>
               </th>
 
-              {/* 12. Data Referência */}
-              <th
-                onClick={() => handleSort('dataReferencia')}
-                className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap"
-              >
-                <div className="flex items-center gap-1">
-                  <span>Data Referência</span>
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                </div>
-              </th>
-
-              {/* 13. Data Vencimento (SLED) */}
+              {/* Data Vencimento (SLED) */}
               <th
                 onClick={() => handleSort('dataVencimento')}
                 className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap text-amber-900 bg-amber-50/50"
@@ -368,17 +324,6 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                 <div className="flex items-center gap-1">
                   <span>Data Vencimento (SLED)</span>
                   <ArrowUpDown className="w-3 h-3 text-amber-600" />
-                </div>
-              </th>
-
-              {/* 14. Faixa Etária */}
-              <th
-                onClick={() => handleSort('faixaEtaria')}
-                className="p-2.5 cursor-pointer hover:bg-slate-200/70 transition-colors whitespace-nowrap text-center"
-              >
-                <div className="flex items-center justify-center gap-1">
-                  <span>Faixa Etária</span>
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
                 </div>
               </th>
 
@@ -404,7 +349,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
           <tbody className="divide-y divide-slate-100">
             {paginatedLotes.length === 0 ? (
               <tr>
-                <td colSpan={18} className="p-8 text-center text-slate-400 italic">
+                <td colSpan={13} className="p-8 text-center text-slate-400 italic">
                   Nenhum lote encontrado na base de estoque.
                 </td>
               </tr>
@@ -463,56 +408,31 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
                       {lote.loteSAP}
                     </td>
 
-                    {/* 5. Desc. Centro */}
-                    <td className="p-2.5 whitespace-nowrap text-slate-600 text-[11px]">
-                      {lote.centroDesc || '-'}
-                    </td>
-
-                    {/* 6. Desc. Material */}
+                    {/* Desc. Material */}
                     <td className="p-2.5">
                       <div className="font-bold text-slate-800 text-xs line-clamp-2" title={lote.materialDesc}>
                         {lote.materialDesc}
                       </div>
                     </td>
 
-                    {/* 7. Unidade Medida */}
+                    {/* Unidade Medida */}
                     <td className="p-2.5 text-center font-bold text-slate-700 whitespace-nowrap">
                       {lote.unidadeMedida || 'UN'}
                     </td>
 
-                    {/* 8. Tipo Avaliação */}
-                    <td className="p-2.5 whitespace-nowrap text-slate-600 text-xs">
-                      {lote.tipoAvaliacao || '-'}
-                    </td>
-
-                    {/* 9. Nº Lote Fornecedor */}
+                    {/* Nº Lote Fornecedor */}
                     <td className="p-2.5 font-mono text-slate-600 whitespace-nowrap">
                       {lote.loteFornecedor || '-'}
                     </td>
 
-                    {/* 10. Data Criação Lote */}
-                    <td className="p-2.5 text-slate-600 whitespace-nowrap">
-                      {formatDateBR(lote.dataCriacaoLote)}
-                    </td>
-
-                    {/* 11. Data Fabricação */}
+                    {/* Data Fabricação */}
                     <td className="p-2.5 text-slate-700 font-medium whitespace-nowrap">
                       {formatDateBR(lote.dataFabricacao)}
                     </td>
 
-                    {/* 12. Data Referência */}
-                    <td className="p-2.5 text-slate-600 whitespace-nowrap">
-                      {formatDateBR(lote.dataReferencia)}
-                    </td>
-
-                    {/* 13. Data Vencimento (SLED) */}
+                    {/* Data Vencimento (SLED) */}
                     <td className="p-2.5 font-bold text-amber-950 bg-amber-50/50 whitespace-nowrap">
                       {formatDateBR(lote.dataVencimento)}
-                    </td>
-
-                    {/* 14. Faixa Etária */}
-                    <td className="p-2.5 text-center whitespace-nowrap font-medium text-slate-700">
-                      {lote.faixaEtaria || 'NORMAL'}
                     </td>
 
                     {/* Estoque Utiliz. Livre */}

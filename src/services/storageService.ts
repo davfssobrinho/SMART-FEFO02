@@ -169,6 +169,44 @@ export function logoutUser(): void {
   localStorage.removeItem(STORAGE_KEYS.LOGGED_USER);
 }
 
+// Helper to check if a string is formatted as a date
+function isDatePattern(val: string): boolean {
+  if (!val) return false;
+  const v = val.trim();
+  return (
+    /^\d{1,2}[\/\.-]\d{1,2}[\/\.-]\d{2,4}$/.test(v) ||
+    /^\d{4}-\d{2}-\d{2}$/.test(v) ||
+    /^\d{2}\/\d{2}\/\d{4}$/.test(v) ||
+    /^\d{4}\/\d{2}\/\d{2}$/.test(v)
+  );
+}
+
+// Ensure lot numbers are not accidentally populated with dates
+export function sanitizeLoteItem(l: SapLoteItem): SapLoteItem {
+  let loteSAP = l.loteSAP ? String(l.loteSAP).trim() : '';
+  let loteFornecedor = l.loteFornecedor ? String(l.loteFornecedor).trim() : '';
+
+  if (isDatePattern(loteSAP)) {
+    if (loteFornecedor && !isDatePattern(loteFornecedor)) {
+      loteSAP = loteFornecedor;
+    } else if (l.id && !isDatePattern(l.id)) {
+      loteSAP = l.id.replace(/^(TXT|EXCEL|LOTE)-/, '');
+    } else {
+      loteSAP = `LOTE-${l.materialCode || '001'}`;
+    }
+  }
+
+  if (isDatePattern(loteFornecedor)) {
+    loteFornecedor = loteSAP;
+  }
+
+  return {
+    ...l,
+    loteSAP,
+    loteFornecedor,
+  };
+}
+
 // Load Lotes from Storage
 export function loadLotes(): SapLoteItem[] {
   try {
@@ -189,14 +227,12 @@ export function loadLotes(): SapLoteItem[] {
             !l.id.startsWith('DEMO-')
         );
         const updated = realOnly.map((l: SapLoteItem) => {
-          let dep = l.deposito || '';
-          if (dep === 'DEP01') dep = '';
-          return {
+          return sanitizeLoteItem({
             ...l,
             centro: l.centro || '',
             centroDesc: l.centroDesc || '',
-            deposito: dep,
-          };
+            deposito: l.deposito || '',
+          });
         });
         const result = recalculateFEFO(updated);
         // Persist cleaned list so mock lotes are removed permanently from storage
@@ -216,7 +252,8 @@ export function loadLotes(): SapLoteItem[] {
 // Save Lotes to Storage
 export function saveLotes(lotes: SapLoteItem[]): void {
   try {
-    const recalced = recalculateFEFO(lotes);
+    const sanitized = lotes.map(sanitizeLoteItem);
+    const recalced = recalculateFEFO(sanitized);
     safeSetItem(STORAGE_KEYS.LOTES, JSON.stringify(recalced));
     safeSetItem(STORAGE_KEYS.LAST_UPDATE, new Date().toISOString());
   } catch (err) {
@@ -467,8 +504,8 @@ export async function parseAndImportSapExcel(
           const loteSAP = String(
             findVal(
               row,
-              ['n lote', 'lote', 'lote sap', 'numero lote', 'charg', 'batch', 'nº lote', 'no. lote', 'n° lote', 'lote/charg'],
-              ['fornecedor', 'forn']
+              ['n lote', 'lote sap', 'numero lote', 'charg', 'batch', 'nº lote', 'no. lote', 'n° lote', 'lote/charg', 'lote'],
+              ['fornecedor', 'forn', 'data', 'dt', 'date', 'vencimento', 'fabricacao', 'criacao', 'referencia', 'valida', 'sled', 'faixa']
             ) || ''
           ).trim();
 
@@ -583,7 +620,7 @@ export async function parseAndImportSapExcel(
             isCritical: false,
           };
 
-          importedLotes.push(loteItem);
+          importedLotes.push(sanitizeLoteItem(loteItem));
         });
 
         if (importedLotes.length === 0) {
@@ -744,6 +781,10 @@ export function parseAndImportSapText(
         headerIndices['materialDesc'] = idx;
       } else if (lower.includes('tipoavaliacao') || lower.includes('tipoaval') || lower.includes('avaliacao')) {
         headerIndices['tipoAvaliacao'] = idx;
+      } else if (lower.includes('vencimento') || lower.includes('sled') || lower.includes('validad') || lower.includes('vfdat') || lower.includes('venc')) {
+        headerIndices['dataVencimento'] = idx;
+      } else if (lower.includes('fabricacao') || lower.includes('fab') || lower.includes('hsdat') || lower.includes('fabric')) {
+        headerIndices['dataFabricacao'] = idx;
       } else if (lower.includes('datacriacaolote') || lower.includes('datacriacao') || lower.includes('dtcriacao') || lower.includes('criacaolote') || lower.includes('criacao')) {
         headerIndices['dataCriacaoLote'] = idx;
       } else if (lower.includes('datareferencia') || lower.includes('dataref') || lower.includes('dtref') || lower.includes('referencia')) {
@@ -752,11 +793,41 @@ export function parseAndImportSapText(
         headerIndices['faixaEtaria'] = idx;
       } else if (lower.includes('posicaodeposito') || lower.includes('posicaodep') || lower.includes('posicao')) {
         headerIndices['posicaoDeposito'] = idx;
-      } else if (lower.includes('loteforn') || lower.includes('forneclote') || lower.includes('lotefornecedor') || lower.includes('nlotefornecedor')) {
+      } else if (
+        (lower.includes('loteforn') || lower.includes('forneclote') || lower.includes('lotefornecedor') || lower.includes('nlotefornecedor')) &&
+        !lower.includes('data') &&
+        !lower.includes('dt') &&
+        !lower.includes('date')
+      ) {
         headerIndices['loteFornecedor'] = idx;
-      } else if (lower.includes('lote') || lower.includes('charg') || lower.includes('batch') || lower.includes('nolote') || lower.includes('nlote')) {
+      } else if (
+        (lower.includes('lote') || lower.includes('charg') || lower.includes('batch') || lower.includes('nolote') || lower.includes('nlote')) &&
+        !lower.includes('forn') &&
+        !lower.includes('data') &&
+        !lower.includes('dt') &&
+        !lower.includes('date') &&
+        !lower.includes('venc') &&
+        !lower.includes('fab') &&
+        !lower.includes('criacao') &&
+        !lower.includes('ref') &&
+        !lower.includes('valida') &&
+        !lower.includes('sled')
+      ) {
         headerIndices['loteSAP'] = idx;
-      } else if (lower.includes('deposito') || lower.includes('depst') || lower.includes('lgort') || lower === 'dep' || lower === 'depo') {
+      } else if (
+        (lower.includes('deposito') ||
+          lower.includes('depó') ||
+          lower.includes('depst') ||
+          lower.includes('lgort') ||
+          lower.includes('armazem') ||
+          lower.includes('almoxarifado') ||
+          lower === 'dep' ||
+          lower === 'depo' ||
+          lower.startsWith('dep.')) &&
+        !lower.includes('desc') &&
+        !lower.includes('nome') &&
+        !lower.includes('posicao')
+      ) {
         headerIndices['deposito'] = idx;
       } else if (lower === 'centro' || lower === 'werks' || lower === 'plant' || (lower.includes('centro') && !lower.includes('desc') && !lower.includes('denom') && !lower.includes('nome'))) {
         headerIndices['centro'] = idx;
@@ -900,8 +971,15 @@ export function parseAndImportSapText(
       materialDesc = descCandidate || materialCode;
     }
 
-    if (!loteSAP) {
-      const loteCandidate = cols.find((c) => c !== materialCode && (/^\d{6,14}$/.test(c) || /^[A-Z0-9]{5,14}$/.test(c)));
+    if (!loteSAP || isDatePattern(loteSAP)) {
+      const loteCandidate = cols.find(
+        (c) =>
+          c !== materialCode &&
+          !isDatePattern(c) &&
+          !c.includes('/') &&
+          !c.includes('-') &&
+          (/^\d{6,14}$/.test(c) || /^[A-Z0-9]{5,14}$/.test(c))
+      );
       loteSAP = loteCandidate || `LOTE-${i}`;
     }
 
@@ -971,7 +1049,7 @@ export function parseAndImportSapText(
       isCritical: false,
     };
 
-    importedLotes.push(loteItem);
+    importedLotes.push(sanitizeLoteItem(loteItem));
   }
 
   if (importedLotes.length === 0) {

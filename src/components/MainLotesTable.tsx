@@ -164,7 +164,7 @@ export const MainLotesTable: React.FC<MainLotesTableProps> = ({
         <div className="flex items-center gap-2">
           <Layers className="w-4 h-4 text-amber-600" />
           <h3 className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">
-            Tabela Principal de Lotes (Estoque Individual por Lote SAP)
+            Cole dados
           </h3>
           <span className="text-xs text-slate-500 bg-slate-200/80 px-2 py-0.5 rounded-full font-semibold">
             {totalItems} lotes encontrados

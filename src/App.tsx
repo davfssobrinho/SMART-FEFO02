@@ -549,6 +549,11 @@ export default function App() {
         onImportBackupJSON={handleImportBackupJSON}
       />
 
+      {/* Footer */}
+      <footer className="bg-white border-t border-slate-200 py-3 px-6 text-center text-xs text-slate-500 font-medium">
+        © {new Date().getFullYear()} Smart FEFO • Criado por Davi Felipe
+      </footer>
+
     </div>
   );
 }
